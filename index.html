@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Secure Call & Chat | AbdTeam</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(17, 24, 39, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col justify-between">
+
+    <!-- HEADER -->
+    <header class="p-4 border-b border-gray-800 flex justify-between items-center glass">
+        <div class="flex items-center space-x-2">
+            <span class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+            <span class="font-bold text-lg tracking-wider">WebRTC PeerCall & Chat</span>
+        </div>
+        <div id="user-status" class="text-sm text-gray-400">Авторизация...</div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <main class="flex-grow flex items-center justify-center p-4">
+        
+        <!-- LOGIN / LOBBY SCREEN -->
+        <div id="lobby-screen" class="glass p-8 rounded-2xl shadow-2xl w-full max-w-md text-center space-y-6">
+            <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent">Добро пожаловать</h1>
+            <p class="text-gray-400 text-sm">Введите ваше имя для начала безопасного видеозвонка и чата</p>
+            
+            <input type="text" id="username-input" placeholder="Ваше имя..." class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl focus:outline-none focus:border-indigo-500 text-white placeholder-gray-500">
+            
+            <div class="space-y-3">
+                <button id="create-room-btn" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition shadow-lg shadow-indigo-600/30">Создать комнату</button>
+                <div class="flex space-x-2">
+                    <input type="text" id="room-id-input" placeholder="Код комнаты..." class="flex-grow px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl focus:outline-none focus:border-indigo-500 text-white placeholder-gray-500">
+                    <button id="join-room-btn" class="px-6 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl font-semibold transition">Войти</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- CALL SCREEN -->
+        <div id="call-screen" class="hidden w-full max-w-7xl flex flex-col space-y-4">
+            <!-- Room Info bar -->
+            <div class="glass px-6 py-3 rounded-xl flex justify-between items-center">
+                <div>
+                    <span class="text-gray-400 text-sm">Комната: </span>
+                    <span id="display-room-id" class="font-mono font-bold text-indigo-400 select-all cursor-pointer" title="Нажмите, чтобы скопировать">---</span>
+                </div>
+                <div id="participants-list" class="text-sm text-gray-300">Участники: На связи</div>
+            </div>
+
+            <!-- Content Grid (Video + Chat) -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[65vh]">
+                
+                <!-- Videos Section (2 columns on lg) -->
+                <div class="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 h-full">
+                    <!-- Local Video -->
+                    <div class="relative glass rounded-2xl overflow-hidden flex items-center justify-center bg-gray-900 h-full">
+                        <video id="local-video" autoplay muted playsinline class="w-full h-full object-cover transform -scale-x-100"></video>
+                        <div class="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded-lg text-xs font-medium backdrop-blur-md" id="local-name">Вы</div>
+                    </div>
+                    <!-- Remote Video -->
+                    <div class="relative glass rounded-2xl overflow-hidden flex items-center justify-center bg-gray-900 h-full">
+                        <video id="remote-video" autoplay playsinline class="w-full h-full object-cover"></video>
+                        <div class="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded-lg text-xs font-medium backdrop-blur-md" id="remote-name">Ожидание участника...</div>
+                    </div>
+                </div>
+
+                <!-- Chat Panel -->
+                <div class="glass rounded-2xl flex flex-col overflow-hidden h-full">
+                    <div class="p-3 border-b border-gray-800 font-semibold text-sm text-gray-300 flex items-center justify-between">
+                        <span>💬 Чат комнаты</span>
+                    </div>
+                    <div id="chat-messages" class="flex-grow p-3 overflow-y-auto space-y-3 text-sm flex flex-col"></div>
+                    <div class="p-3 border-t border-gray-800 flex space-x-2">
+                        <input type="text" id="chat-input" placeholder="Сообщение..." class="flex-grow px-3 py-2 bg-gray-900 border border-gray-700 rounded-xl focus:outline-none focus:border-indigo-500 text-white placeholder-gray-500 text-sm">
+                        <button id="send-chat-btn" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition text-sm">Отпр.</button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Controls Toolbar -->
+            <div class="flex justify-center space-x-4">
+                <button id="mic-btn" class="p-4 rounded-2xl glass hover:bg-gray-800 transition text-white">🎤</button>
+                <button id="cam-btn" class="p-4 rounded-2xl glass hover:bg-gray-800 transition text-white">📷</button>
+                <button id="hangup-btn" class="px-6 py-4 bg-red-600 hover:bg-red-500 rounded-2xl font-semibold transition shadow-lg shadow-red-600/30">Завершить звонок</button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="p-4 text-center text-xs text-gray-500 border-t border-gray-800 glass">
+        WebRTC & Firestore Signaling by AbdTeam
+    </footer>
+
+    <!-- Firebase SDKs (Compat v10) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <script>
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBxdKuuoBKYKVTmo8r10IfMUk4RTsoOA8g",
+            authDomain: "telegraph-123-321.firebaseapp.com",
+            projectId: "telegraph-123-321",
+            storageBucket: "telegraph-123-321.firebasestorage.app",
+            messagingSenderId: "39382080952",
+            appId: "1:39382080952:web:0fb2a42caa0a935ffbc34d"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        const servers = {
+            iceServers: [
+                { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }
+            ]
+        };
+
+        let pc;
+        let localStream;
+        let remoteStream;
+        let roomId = null;
+        let currentUser = null;
+        let roomRef = null;
+
+        const lobbyScreen = document.getElementById('lobby-screen');
+        const callScreen = document.getElementById('call-screen');
+        const userStatus = document.getElementById('user-status');
+        const usernameInput = document.getElementById('username-input');
+        const createRoomBtn = document.getElementById('create-room-btn');
+        const joinRoomBtn = document.getElementById('join-room-btn');
+        const roomIdInput = document.getElementById('room-id-input');
+        const displayRoomId = document.getElementById('display-room-id');
+        
+        const localVideo = document.getElementById('local-video');
+        const remoteVideo = document.getElementById('remote-video');
+        const localName = document.getElementById('local-name');
+        const remoteName = document.getElementById('remote-name');
+        const micBtn = document.getElementById('mic-btn');
+        const camBtn = document.getElementById('cam-btn');
+        const hangupBtn = document.getElementById('hangup-btn');
+
+        // Chat Elements
+        const chatMessages = document.getElementById('chat-messages');
+        const chatInput = document.getElementById('chat-input');
+        const sendChatBtn = document.getElementById('send-chat-btn');
+
+        // Anonymous Authentication
+        auth.signInAnonymously().then((userCredential) => {
+            currentUser = userCredential.user;
+            userStatus.textContent = `Анонимный ID: ${currentUser.uid.substring(0, 6)}...`;
+        }).catch((error) => {
+            userStatus.textContent = "Ошибка авторизации";
+            console.error(error);
+        });
+
+        // Initialize Media Stream
+        async function initLocalStream() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localVideo.srcObject = localStream;
+            } catch (error) {
+                alert('Не удалось получить доступ к камере или микрофону.');
+                console.error(error);
+            }
+        }
+
+        // Initialize Chat Listener
+        function initChat() {
+            roomRef.collection('messages').orderBy('timestamp').onSnapshot(snapshot => {
+                snapshot.docChanges().forEach(change => {
+                    if (change.type === 'added') {
+                        const msg = change.doc.data();
+                        const messageEl = document.createElement('div');
+                        messageEl.className = 'flex flex-col space-y-0.5';
+                        messageEl.innerHTML = `
+                            <span class="font-medium text-indigo-400 text-xs">${escapeHtml(msg.sender)}</span>
+                            <div class="bg-gray-900/80 px-3 py-2 rounded-xl text-gray-200 break-words">${escapeHtml(msg.text)}</div>
+                        `;
+                        chatMessages.appendChild(messageEl);
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                    }
+                });
+            });
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        async function sendMessage() {
+            const text = chatInput.value.trim();
+            if (!text || !roomRef) return;
+            const name = usernameInput.value.trim() || "Гость";
+            
+            await roomRef.collection('messages').add({
+                sender: name,
+                text: text,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            chatInput.value = '';
+        }
+
+        sendChatBtn.onclick = sendMessage;
+        chatInput.onkeydown = (e) => {
+            if (e.key === 'Enter') sendMessage();
+        };
+
+        // Create Room (Caller)
+        createRoomBtn.onclick = async () => {
+            const name = usernameInput.value.trim() || "Гость";
+            if (!currentUser) return alert('Подождите завершения авторизации...');
+            
+            await initLocalStream();
+            if (!localStream) return;
+
+            lobbyScreen.classList.add('hidden');
+            callScreen.classList.remove('hidden');
+            localName.textContent = name;
+
+            roomRef = db.collection('rooms').doc();
+            roomId = roomRef.id;
+            displayRoomId.textContent = roomId;
+
+            initChat();
+
+            pc = new RTCPeerConnection(servers);
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            remoteStream = new MediaStream();
+            remoteVideo.srcObject = remoteStream;
+
+            pc.ontrack = event => {
+                event.streams[0].getTracks().forEach(track => {
+                    remoteStream.addTrack(track);
+                });
+                remoteName.textContent = "Собеседник";
+            };
+
+            const callerCandidatesCollection = roomRef.collection('callerCandidates');
+            pc.onicecandidate = event => {
+                if (event.candidate) {
+                    callerCandidatesCollection.add(event.candidate.toJSON());
+                }
+            };
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            const roomWithOffer = {
+                offer: { type: offer.type, sdp: offer.sdp },
+                callerName: name
+            };
+            await roomRef.set(roomWithOffer);
+
+            roomRef.onSnapshot(async snapshot => {
+                const data = snapshot.data();
+                if (!pc.currentRemoteDescription && data && data.answer) {
+                    const answer = new RTCSessionDescription(data.answer);
+                    await pc.setRemoteDescription(answer);
+                    remoteName.textContent = data.calleeName || "Собеседник";
+                }
+            });
+
+            roomRef.collection('calleeCandidates').onSnapshot(snapshot => {
+                snapshot.docChanges().forEach(async change => {
+                    if (change.type === 'added') {
+                        let data = change.doc.data();
+                        await pc.addIceCandidate(new RTCIceCandidate(data));
+                    }
+                });
+            });
+        };
+
+        // Join Room (Callee)
+        joinRoomBtn.onclick = async () => {
+            const name = usernameInput.value.trim() || "Гость";
+            roomId = roomIdInput.value.trim();
+            if (!roomId) return alert('Введите код комнаты!');
+            if (!currentUser) return alert('Подождите завершения авторизации...');
+
+            await initLocalStream();
+            if (!localStream) return;
+
+            lobbyScreen.classList.add('hidden');
+            callScreen.classList.remove('hidden');
+            localName.textContent = name;
+            displayRoomId.textContent = roomId;
+
+            roomRef = db.collection('rooms').doc(roomId);
+            const roomSnapshot = await roomRef.get();
+            if (!roomSnapshot.exists) return alert('Комната не найдена!');
+
+            initChat();
+
+            pc = new RTCPeerConnection(servers);
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            remoteStream = new MediaStream();
+            remoteVideo.srcObject = remoteStream;
+
+            pc.ontrack = event => {
+                event.streams[0].getTracks().forEach(track => {
+                    remoteStream.addTrack(track);
+                });
+            };
+
+            const calleeCandidatesCollection = roomRef.collection('calleeCandidates');
+            pc.onicecandidate = event => {
+                if (event.candidate) {
+                    calleeCandidatesCollection.add(event.candidate.toJSON());
+                }
+            };
+
+            const roomData = roomSnapshot.data();
+            remoteName.textContent = roomData.callerName || "Собеседник";
+            
+            const offer = roomData.offer;
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            await roomRef.update({
+                answer: { type: answer.type, sdp: answer.sdp },
+                calleeName: name
+            });
+
+            roomRef.collection('callerCandidates').onSnapshot(snapshot => {
+                snapshot.docChanges().forEach(async change => {
+                    if (change.type === 'added') {
+                        let data = change.doc.data();
+                        await pc.addIceCandidate(new RTCIceCandidate(data));
+                    }
+                });
+            });
+        };
+
+        // Controls
+        micBtn.onclick = () => {
+            const audioTrack = localStream.getAudioTracks()[0];
+            audioTrack.enabled = !audioTrack.enabled;
+            micBtn.classList.toggle('bg-red-600', !audioTrack.enabled);
+            micBtn.textContent = audioTrack.enabled ? '🎤' : '🔇';
+        };
+
+        camBtn.onclick = () => {
+            const videoTrack = localStream.getVideoTracks()[0];
+            videoTrack.enabled = !videoTrack.enabled;
+            camBtn.classList.toggle('bg-red-600', !videoTrack.enabled);
+            camBtn.textContent = videoTrack.enabled ? '📷' : '🚫';
+        };
+
+        hangupBtn.onclick = () => {
+            if (pc) pc.close();
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
+            window.location.reload();
+        };
+
+        // Copy Room ID on click
+        displayRoomId.onclick = () => {
+            navigator.clipboard.writeText(roomId);
+            alert('Код комнаты скопирован!');
+        };
+    </script>
+</body>
+</html>
