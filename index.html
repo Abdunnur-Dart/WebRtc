@@ -12,7 +12,7 @@
         .glass { background: rgba(17, 24, 39, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
     </style>
 </head>
-<body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col justify-between">
+<body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col justify-between pb-36">
 
     <!-- HEADER -->
     <header class="p-4 border-b border-gray-800 flex justify-between items-center glass">
@@ -36,7 +36,7 @@
             <div class="space-y-3">
                 <button id="create-room-btn" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition shadow-lg shadow-indigo-600/30">Создать комнату</button>
                 <div class="flex space-x-2">
-                    <input type="text" id="room-id-input" placeholder="Код комнаты..." class="flex-grow px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl focus:outline-none focus:border-indigo-500 text-white placeholder-gray-500">
+                    <input type="text" id="room-id-input" placeholder="Код комнаты..." class="flex-grow px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl focus:outline-none focus:border-indigo-500 text-white placeholder-gray-500 uppercase">
                     <button id="join-room-btn" class="px-6 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl font-semibold transition">Войти</button>
                 </div>
             </div>
@@ -94,6 +94,18 @@
 
     </main>
 
+    <!-- ON-SCREEN DEBUG LOGS PANEL -->
+    <div id="debug-logs" class="fixed bottom-0 left-0 right-0 bg-gray-950/95 border-t border-gray-800 p-3 text-xs font-mono text-green-400 z-50 shadow-2xl">
+        <div class="flex justify-between items-center border-b border-gray-800 pb-1 mb-1">
+            <span class="font-bold text-gray-300 flex items-center space-x-1">
+                <span class="w-2 h-2 bg-indigo-500 rounded-full animate-ping"></span>
+                <span>🛠️ Логи разработки (GitHub Pages):</span>
+            </span>
+            <button onclick="document.getElementById('log-content').innerHTML = ''" class="text-gray-500 hover:text-gray-300 underline">Очистить</button>
+        </div>
+        <div id="log-content" class="space-y-1 max-h-24 overflow-y-auto"></div>
+    </div>
+
     <!-- FOOTER -->
     <footer class="p-4 text-center text-xs text-gray-500 border-t border-gray-800 glass">
         WebRTC & Firestore Signaling by AbdTeam
@@ -105,6 +117,25 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
     <script>
+        // Logger function for on-screen debug panel
+        function logMsg(message, isError = false) {
+            const logContent = document.getElementById('log-content');
+            if (!logContent) return;
+            const div = document.createElement('div');
+            div.className = isError ? 'text-red-400 font-semibold' : 'text-green-400';
+            const time = new Date().toLocaleTimeString();
+            div.textContent = `[${time}] ${message}`;
+            logContent.appendChild(div);
+            logContent.scrollTop = logContent.scrollHeight;
+            if (isError) {
+                console.error(message);
+            } else {
+                console.log(message);
+            }
+        }
+
+        logMsg("Инициализация приложения...");
+
         // Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyBxdKuuoBKYKVTmo8r10IfMUk4RTsoOA8g",
@@ -157,19 +188,23 @@
         // Anonymous Authentication
         auth.signInAnonymously().then((userCredential) => {
             currentUser = userCredential.user;
-            userStatus.textContent = `Анонимный ID: ${currentUser.uid.substring(0, 6)}...`;
+            userStatus.textContent = `UID: ${currentUser.uid.substring(0, 6)}...`;
+            logMsg(`Успешная анонимная авторизация: ${currentUser.uid}`);
         }).catch((error) => {
             userStatus.textContent = "Ошибка авторизации";
-            console.error(error);
+            logMsg(`Ошибка авторизации: ${error.message}`, true);
         });
 
         // Initialize Media Stream
         async function initLocalStream() {
             try {
+                logMsg("Запрос доступа к камере и микрофону...");
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 localVideo.srcObject = localStream;
+                logMsg("Доступ к медиа устройствам получен.");
             } catch (error) {
                 alert('Не удалось получить доступ к камере или микрофону.');
+                logMsg(`Ошибка getUserMedia: ${error.message}`, true);
                 console.error(error);
             }
         }
@@ -190,6 +225,8 @@
                         chatMessages.scrollTop = chatMessages.scrollHeight;
                     }
                 });
+            }, error => {
+                logMsg(`Ошибка чата onSnapshot: ${error.message}`, true);
             });
         }
 
@@ -202,18 +239,27 @@
             if (!text || !roomRef) return;
             const name = usernameInput.value.trim() || "Гость";
             
-            await roomRef.collection('messages').add({
-                sender: name,
-                text: text,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            chatInput.value = '';
+            try {
+                await roomRef.collection('messages').add({
+                    sender: name,
+                    text: text,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                chatInput.value = '';
+            } catch (err) {
+                logMsg(`Ошибка отправки сообщения: ${err.message}`, true);
+            }
         }
 
         sendChatBtn.onclick = sendMessage;
         chatInput.onkeydown = (e) => {
             if (e.key === 'Enter') sendMessage();
         };
+
+        // Helper: Generate short random room code (6 chars, e.g., A7K9X2)
+        function generateShortRoomId() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
 
         // Create Room (Caller)
         createRoomBtn.onclick = async () => {
@@ -227,9 +273,10 @@
             callScreen.classList.remove('hidden');
             localName.textContent = name;
 
-            roomRef = db.collection('rooms').doc();
-            roomId = roomRef.id;
+            roomId = generateShortRoomId();
+            roomRef = db.collection('rooms').doc(roomId);
             displayRoomId.textContent = roomId;
+            logMsg(`Создана комната с кодом: ${roomId}`);
 
             initChat();
 
@@ -240,6 +287,7 @@
             remoteVideo.srcObject = remoteStream;
 
             pc.ontrack = event => {
+                logMsg("Получен медиапоток от собеседника (ontrack)");
                 event.streams[0].getTracks().forEach(track => {
                     remoteStream.addTrack(track);
                 });
@@ -249,33 +297,49 @@
             const callerCandidatesCollection = roomRef.collection('callerCandidates');
             pc.onicecandidate = event => {
                 if (event.candidate) {
-                    callerCandidatesCollection.add(event.candidate.toJSON());
+                    callerCandidatesCollection.add(event.candidate.toJSON()).catch(err => {
+                        logMsg(`Ошибка добавления ICE кандидата (caller): ${err.message}`, true);
+                    });
                 }
             };
 
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
+            try {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                logMsg("Создан SDP Offer");
 
-            const roomWithOffer = {
-                offer: { type: offer.type, sdp: offer.sdp },
-                callerName: name
-            };
-            await roomRef.set(roomWithOffer);
+                const roomWithOffer = {
+                    offer: { type: offer.type, sdp: offer.sdp },
+                    callerName: name
+                };
+                await roomRef.set(roomWithOffer);
+                logMsg("Offer записан в Firestore");
+            } catch (err) {
+                logMsg(`Ошибка при создании предложения: ${err.message}`, true);
+            }
 
             roomRef.onSnapshot(async snapshot => {
                 const data = snapshot.data();
                 if (!pc.currentRemoteDescription && data && data.answer) {
+                    logMsg("Получен SDP Answer от собеседника");
                     const answer = new RTCSessionDescription(data.answer);
                     await pc.setRemoteDescription(answer);
                     remoteName.textContent = data.calleeName || "Собеседник";
                 }
+            }, error => {
+                logMsg(`Ошибка roomRef snapshot: ${error.message}`, true);
             });
 
             roomRef.collection('calleeCandidates').onSnapshot(snapshot => {
                 snapshot.docChanges().forEach(async change => {
                     if (change.type === 'added') {
                         let data = change.doc.data();
-                        await pc.addIceCandidate(new RTCIceCandidate(data));
+                        try {
+                            await pc.addIceCandidate(new RTCIceCandidate(data));
+                            logMsg("Добавлен ICE кандидат от callee");
+                        } catch (err) {
+                            logMsg(`Ошибка добавления ICE (callee candidate): ${err.message}`, true);
+                        }
                     }
                 });
             });
@@ -284,65 +348,89 @@
         // Join Room (Callee)
         joinRoomBtn.onclick = async () => {
             const name = usernameInput.value.trim() || "Гость";
-            roomId = roomIdInput.value.trim();
+            roomId = roomIdInput.value.trim().toUpperCase();
             if (!roomId) return alert('Введите код комнаты!');
             if (!currentUser) return alert('Подождите завершения авторизации...');
 
-            await initLocalStream();
-            if (!localStream) return;
-
-            lobbyScreen.classList.add('hidden');
-            callScreen.classList.remove('hidden');
-            localName.textContent = name;
-            displayRoomId.textContent = roomId;
-
-            roomRef = db.collection('rooms').doc(roomId);
-            const roomSnapshot = await roomRef.get();
-            if (!roomSnapshot.exists) return alert('Комната не найдена!');
-
-            initChat();
-
-            pc = new RTCPeerConnection(servers);
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-            remoteStream = new MediaStream();
-            remoteVideo.srcObject = remoteStream;
-
-            pc.ontrack = event => {
-                event.streams[0].getTracks().forEach(track => {
-                    remoteStream.addTrack(track);
-                });
-            };
-
-            const calleeCandidatesCollection = roomRef.collection('calleeCandidates');
-            pc.onicecandidate = event => {
-                if (event.candidate) {
-                    calleeCandidatesCollection.add(event.candidate.toJSON());
-                }
-            };
-
-            const roomData = roomSnapshot.data();
-            remoteName.textContent = roomData.callerName || "Собеседник";
+            logMsg(`Попытка входа в комнату: ${roomId}`);
             
-            const offer = roomData.offer;
-            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            try {
+                roomRef = db.collection('rooms').doc(roomId);
+                const roomSnapshot = await roomRef.get();
+                if (!roomSnapshot.exists) {
+                    logMsg(`Комната ${roomId} не найдена в Firestore`, true);
+                    return alert('Комната не найдена! Проверьте правильность кода.');
+                }
 
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
+                await initLocalStream();
+                if (!localStream) return;
 
-            await roomRef.update({
-                answer: { type: answer.type, sdp: answer.sdp },
-                calleeName: name
-            });
+                lobbyScreen.classList.add('hidden');
+                callScreen.classList.remove('hidden');
+                localName.textContent = name;
+                displayRoomId.textContent = roomId;
+                logMsg(`Успешный доступ к комнате ${roomId}`);
 
-            roomRef.collection('callerCandidates').onSnapshot(snapshot => {
-                snapshot.docChanges().forEach(async change => {
-                    if (change.type === 'added') {
-                        let data = change.doc.data();
-                        await pc.addIceCandidate(new RTCIceCandidate(data));
+                initChat();
+
+                pc = new RTCPeerConnection(servers);
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+                remoteStream = new MediaStream();
+                remoteVideo.srcObject = remoteStream;
+
+                pc.ontrack = event => {
+                    logMsg("Получен медиапоток от создателя комнаты (ontrack)");
+                    event.streams[0].getTracks().forEach(track => {
+                        remoteStream.addTrack(track);
+                    });
+                    remoteName.textContent = "Собеседник";
+                };
+
+                const calleeCandidatesCollection = roomRef.collection('calleeCandidates');
+                pc.onicecandidate = event => {
+                    if (event.candidate) {
+                        calleeCandidatesCollection.add(event.candidate.toJSON()).catch(err => {
+                            logMsg(`Ошибка отправки ICE кандидата (callee): ${err.message}`, true);
+                        });
                     }
+                };
+
+                const roomData = roomSnapshot.data();
+                remoteName.textContent = roomData.callerName || "Собеседник";
+                
+                const offer = roomData.offer;
+                await pc.setRemoteDescription(new RTCSessionDescription(offer));
+                logMsg("Установлен удаленный SDP Offer");
+
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                logMsg("Создан SDP Answer");
+
+                await roomRef.update({
+                    answer: { type: answer.type, sdp: answer.sdp },
+                    calleeName: name
                 });
-            });
+                logMsg("Answer отправлен в Firestore");
+
+                roomRef.collection('callerCandidates').onSnapshot(snapshot => {
+                    snapshot.docChanges().forEach(async change => {
+                        if (change.type === 'added') {
+                            let data = change.doc.data();
+                            try {
+                                await pc.addIceCandidate(new RTCIceCandidate(data));
+                                logMsg("Добавлен ICE кандидат от caller");
+                            } catch (err) {
+                                logMsg(`Ошибка добавления ICE (caller candidate): ${err.message}`, true);
+                            }
+                        }
+                    });
+                });
+
+            } catch (err) {
+                logMsg(`Ошибка при входе в комнату: ${err.message}`, true);
+                alert(`Ошибка подключения: ${err.message}`);
+            }
         };
 
         // Controls
@@ -351,6 +439,7 @@
             audioTrack.enabled = !audioTrack.enabled;
             micBtn.classList.toggle('bg-red-600', !audioTrack.enabled);
             micBtn.textContent = audioTrack.enabled ? '🎤' : '🔇';
+            logMsg(`Микрофон: ${audioTrack.enabled ? 'включен' : 'выключен'}`);
         };
 
         camBtn.onclick = () => {
@@ -358,9 +447,11 @@
             videoTrack.enabled = !videoTrack.enabled;
             camBtn.classList.toggle('bg-red-600', !videoTrack.enabled);
             camBtn.textContent = videoTrack.enabled ? '📷' : '🚫';
+            logMsg(`Камера: ${videoTrack.enabled ? 'включена' : 'выключена'}`);
         };
 
         hangupBtn.onclick = () => {
+            logMsg("Завершение звонка...");
             if (pc) pc.close();
             if (localStream) localStream.getTracks().forEach(track => track.stop());
             window.location.reload();
@@ -370,6 +461,7 @@
         displayRoomId.onclick = () => {
             navigator.clipboard.writeText(roomId);
             alert('Код комнаты скопирован!');
+            logMsg(`Код комнаты ${roomId} скопирован в буфер обмена`);
         };
     </script>
 </body>
