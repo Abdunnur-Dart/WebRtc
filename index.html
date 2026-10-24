@@ -361,6 +361,7 @@ pc.oniceconnectionstatechange = () => {
         };
 
         // Join Room (Callee)
+       // Join Room (Callee)
         joinRoomBtn.onclick = async () => {
             const name = usernameInput.value.trim() || "Гость";
             roomId = roomIdInput.value.trim().toUpperCase();
@@ -371,10 +372,14 @@ pc.oniceconnectionstatechange = () => {
             
             try {
                 roomRef = db.collection('rooms').doc(roomId);
+                
+                // Выводим точный путь в лог на экране, чтобы проверить совпадение
+                logMsg(`Точный путь запроса: ${roomRef.path}`);
+
                 const roomSnapshot = await roomRef.get();
                 if (!roomSnapshot.exists) {
-                    logMsg(`Комната ${roomId} не найдена в Firestore`, true);
-                    return alert('Комната не найдена! Проверьте правильность кода.');
+                    logMsg(`Документ по пути ${roomRef.path} не найден в Firestore!`, true);
+                    return alert(`Комната не найдена!\nПуть: ${roomRef.path}`);
                 }
 
                 await initLocalStream();
@@ -396,17 +401,22 @@ pc.oniceconnectionstatechange = () => {
 
                 pc.ontrack = event => {
                     logMsg("Получен медиапоток от создателя комнаты (ontrack)");
-                    event.streams[0].getTracks().forEach(track => {
-                        remoteStream.addTrack(track);
-                    });
+                    if (remoteVideo.srcObject !== event.streams[0]) {
+                        remoteVideo.srcObject = event.streams[0];
+                        remoteVideo.play().catch(err => logMsg(`Ошибка play(): ${err.message}`, true));
+                    }
                     remoteName.textContent = "Собеседник";
+                };
+
+                pc.oniceconnectionstatechange = () => {
+                    logMsg(`Статус ICE: ${pc.iceConnectionState}`);
                 };
 
                 const calleeCandidatesCollection = roomRef.collection('calleeCandidates');
                 pc.onicecandidate = event => {
                     if (event.candidate) {
                         calleeCandidatesCollection.add(event.candidate.toJSON()).catch(err => {
-                            logMsg(`Ошибка отправки ICE кандидата (callee): ${err.message}`, true);
+                            logMsg(`Ошибка ICE (callee): ${err.message}`, true);
                         });
                     }
                 };
@@ -436,7 +446,7 @@ pc.oniceconnectionstatechange = () => {
                                 await pc.addIceCandidate(new RTCIceCandidate(data));
                                 logMsg("Добавлен ICE кандидат от caller");
                             } catch (err) {
-                                logMsg(`Ошибка добавления ICE (caller candidate): ${err.message}`, true);
+                                logMsg(`Ошибка ICE (caller): ${err.message}`, true);
                             }
                         }
                     });
