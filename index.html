@@ -286,13 +286,28 @@
             remoteStream = new MediaStream();
             remoteVideo.srcObject = remoteStream;
 
-            pc.ontrack = event => {
-                logMsg("Получен медиапоток от собеседника (ontrack)");
-                event.streams[0].getTracks().forEach(track => {
-                    remoteStream.addTrack(track);
-                });
-                remoteName.textContent = "Собеседник";
-            };
+pc.ontrack = event => {
+    logMsg("Получен медиапоток от собеседника (ontrack)");
+    
+    // Прямая привязка готового потока и принудительный запуск play() для мобильных
+    if (remoteVideo.srcObject !== event.streams[0]) {
+        remoteVideo.srcObject = event.streams[0];
+        remoteVideo.play().catch(err => {
+            logMsg(`Ошибка автозапуска видео: ${err.message}`, true);
+        });
+    }
+    remoteName.textContent = "Собеседник";
+};
+
+// Отслеживание реального состояния сетевого соединения WebRTC
+pc.oniceconnectionstatechange = () => {
+    logMsg(`Статус соединения (ICE): ${pc.iceConnectionState}`);
+    if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+        logMsg("⚠️ Ошибка P2P сети! Телефоны за жестким NAT. Нужен TURN-сервер.", true);
+    } else if (pc.iceConnectionState === 'connected') {
+        logMsg("✅ P2P соединение успешно установлено!");
+    }
+};
 
             const callerCandidatesCollection = roomRef.collection('callerCandidates');
             pc.onicecandidate = event => {
